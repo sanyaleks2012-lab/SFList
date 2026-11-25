@@ -2,7 +2,6 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
-    id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -26,7 +25,6 @@ android {
 
     buildTypes {
         release {
-            // Для теста подписываем debug-ключом. Для публикации нужен свой signingConfig.
             signingConfig = signingConfigs.getByName("debug")
         }
     }
