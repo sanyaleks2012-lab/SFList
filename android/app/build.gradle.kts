@@ -1,7 +1,8 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // Flutter Gradle Plugin применяется после Android и Kotlin плагинов
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -15,13 +16,9 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
-    }
-
     defaultConfig {
         applicationId = "com.SFRaidTeam.sflist"
-        minSdk = 24 // было flutter.minSdkVersion; Shizuku требует 24+
+        minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -29,9 +26,15 @@ android {
 
     buildTypes {
         release {
-            // Для теста подписываем debug-ключом. Для публикации создайте свой signingConfig.
+            // Для теста подписываем debug-ключом. Для публикации нужен свой signingConfig.
             signingConfig = signingConfigs.getByName("debug")
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_11)
     }
 }
 
