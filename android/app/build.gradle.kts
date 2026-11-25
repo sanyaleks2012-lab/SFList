@@ -2,7 +2,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
-    id("dev.flutter.flutter-gradle-plugin")
+    id("kotlin-android")
 }
 
 android {
@@ -17,7 +17,7 @@ android {
 
     defaultConfig {
         applicationId = "com.SFRaidTeam.sflist"
-        minSdk = 24
+        minSdk = 37
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
