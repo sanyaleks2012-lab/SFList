@@ -1,0 +1,23 @@
+name: sflist
+description: SFList — редактор list.xml и perks.xml для Shadow Fight 2 модов
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  xml: ^6.5.0
+  file_picker: ^8.1.2
+  permission_handler: ^11.3.1
+  shared_preferences: ^2.3.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
