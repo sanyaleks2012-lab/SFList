@@ -37,7 +37,7 @@ jobs:
         run: flutter --version
 
       - name: Get dependencies
-        run: flutter pub get && flutter pub upgrade --major-versions
+        run: flutter pub get
 
       - name: Build APK
         run: flutter build apk --release --android-skip-build-dependency-validation
