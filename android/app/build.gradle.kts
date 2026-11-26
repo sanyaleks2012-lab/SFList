@@ -1,3 +1,4 @@
+
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -8,7 +9,7 @@ plugins {
 
 android {
     namespace = "com.SFRaidTeam.sflist"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

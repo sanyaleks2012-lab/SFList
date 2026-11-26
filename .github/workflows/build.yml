@@ -1,3 +1,4 @@
+
 name: Android Build
 
 on:
@@ -27,6 +28,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager "platforms;android-37" "build-tools;36.0.0"
+          yes | sdkmanager --licenses
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -34,10 +43,19 @@ jobs:
           cache: true
 
       - name: Flutter version
-        run: flutter --version
+        run: |
+          flutter --version
+          flutter doctor -v
+
+      - name: Check Android SDK
+        run: |
+          sdkmanager --list_installed
 
       - name: Get dependencies
         run: flutter pub get
+
+      - name: Analyze project
+        run: flutter analyze
 
       - name: Build APK
         run: flutter build apk --release

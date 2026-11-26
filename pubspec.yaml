@@ -9,10 +9,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
   xml: ^6.5.0
-  file_picker: any
-  permission_handler: any
-  shared_preferences: any
+  file_picker: ^10.0.0
+  permission_handler: ^12.0.0
+  shared_preferences: ^2.5.0
 
 dev_dependencies:
   flutter_test:
