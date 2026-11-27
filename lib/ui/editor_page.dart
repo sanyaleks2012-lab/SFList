@@ -19,7 +19,10 @@ class EditorPage extends StatefulWidget {
 
 class _EditorPageState extends State<EditorPage> {
   int _tab = 0;
-  DocKind _xmlKind = DocKind.list;
+
+  /// Документ, который правили последним: на вкладках «Проверка» и «XML»
+  /// undo/redo относятся к нему.
+  GameDoc? _lastDoc;
 
   GameDoc? _doc(DocKind k) {
     for (final d in widget.docs) {
@@ -31,7 +34,7 @@ class _EditorPageState extends State<EditorPage> {
   GameDoc? get _current => switch (_tab) {
         0 => _doc(DocKind.list),
         1 => _doc(DocKind.perks),
-        _ => null,
+        _ => _lastDoc,
       };
 
   bool get _anyDirty => widget.docs.any((d) => d.dirty);
@@ -39,7 +42,10 @@ class _EditorPageState extends State<EditorPage> {
   int get _errorCount => widget.docs
       .fold(0, (n, d) => n + d.validate().where((i) => i.isError).length);
 
-  void _changed() => setState(() {});
+  void _changed([GameDoc? doc]) {
+    if (doc != null) _lastDoc = doc;
+    setState(() {});
+  }
 
   void _undo() {
     _current?.undo();
@@ -49,6 +55,11 @@ class _EditorPageState extends State<EditorPage> {
   void _redo() {
     _current?.redo();
     _changed();
+  }
+
+  String get _undoTarget {
+    final d = _current;
+    return d == null ? '' : ' (${d.kind.fileName})';
   }
 
   Future<void> _save() async {
@@ -69,7 +80,7 @@ class _EditorPageState extends State<EditorPage> {
       }
       if (mounted) {
         snack(context,
-            n == 0 ? 'Нечего сохранять' : 'Сохранено файлов: $n (копия — *.bak)');
+            n == 0 ? 'Нечего сохранять' : 'Сохранено файлов: $n (оригинал — в *.bak)');
       }
     } catch (e) {
       if (mounted) await showErrorDialog(context, 'Не удалось сохранить:\n$e');
@@ -77,16 +88,29 @@ class _EditorPageState extends State<EditorPage> {
     _changed();
   }
 
-  void _openWhole(GameDoc d) {
-    Navigator.of(context).push(MaterialPageRoute(
+  Future<void> _openWhole(GameDoc d) async {
+    final text = d.toText();
+    if (text.length > 150000) {
+      final ok = await confirmDialog(
+        context,
+        'Большой файл',
+        '${d.kind.fileName} занимает ${(text.length / 1024).round()} КБ. '
+            'Редактор целого файла может заметно тормозить. Для правки одного '
+            'предмета или перка лучше открыть его XML из вкладок «Предметы»/«Перки». '
+            'Открыть весь файл?',
+      );
+      if (!ok || !mounted) return;
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => RawEditorPage(
         title: d.kind.fileName,
-        text: d.toText(),
+        text: text,
         hint: 'Полный XML файла',
         onApply: (t) {
           try {
             d.replaceAll(t);
-            _changed();
+            _changed(d);
             return null;
           } catch (e) {
             return 'Ошибка XML: $e';
@@ -126,18 +150,6 @@ class _EditorPageState extends State<EditorPage> {
               onTap: () => _openWhole(d),
             ),
           ),
-        if (loaded.length == 2)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: SegmentedButton<DocKind>(
-              segments: const [
-                ButtonSegment(value: DocKind.list, label: Text('list.xml')),
-                ButtonSegment(value: DocKind.perks, label: Text('perks.xml')),
-              ],
-              selected: {_xmlKind},
-              onSelectionChanged: (s) => setState(() => _xmlKind = s.first),
-            ),
-          ),
       ],
     );
   }
@@ -146,6 +158,7 @@ class _EditorPageState extends State<EditorPage> {
   Widget build(BuildContext context) {
     final list = _doc(DocKind.list);
     final perks = _doc(DocKind.perks);
+    final errors = _errorCount;
 
     return PopScope(
       canPop: !_anyDirty,
@@ -164,12 +177,12 @@ class _EditorPageState extends State<EditorPage> {
           title: Text(widget.docs.map((d) => d.kind.fileName).join(' + ')),
           actions: [
             IconButton(
-              tooltip: 'Отменить',
+              tooltip: 'Отменить$_undoTarget',
               onPressed: (_current?.canUndo ?? false) ? _undo : null,
               icon: const Icon(Icons.undo),
             ),
             IconButton(
-              tooltip: 'Повторить',
+              tooltip: 'Повторить$_undoTarget',
               onPressed: (_current?.canRedo ?? false) ? _redo : null,
               icon: const Icon(Icons.redo),
             ),
@@ -187,10 +200,10 @@ class _EditorPageState extends State<EditorPage> {
         body: switch (_tab) {
           0 => list == null
               ? _missing(DocKind.list)
-              : ItemsTab(doc: list, onChanged: _changed),
+              : ItemsTab(doc: list, onChanged: () => _changed(list)),
           1 => perks == null
               ? _missing(DocKind.perks)
-              : PerksTab(doc: perks, onChanged: _changed),
+              : PerksTab(doc: perks, onChanged: () => _changed(perks)),
           2 => ValidationTab(docs: widget.docs, onChanged: _changed),
           _ => _xmlTab(),
         },
@@ -204,8 +217,8 @@ class _EditorPageState extends State<EditorPage> {
                 icon: Icon(Icons.auto_awesome_outlined), label: 'Перки'),
             NavigationDestination(
               icon: Badge(
-                isLabelVisible: _errorCount > 0,
-                label: Text('$_errorCount'),
+                isLabelVisible: errors > 0,
+                label: Text('$errors'),
                 child: const Icon(Icons.fact_check_outlined),
               ),
               label: 'Проверка',

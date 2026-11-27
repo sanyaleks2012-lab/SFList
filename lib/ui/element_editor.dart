@@ -16,6 +16,8 @@ class ElementEditorPage extends StatefulWidget {
     this.onRaw,
     this.onDelete,
     this.extras = const [],
+    this.requireName = false,
+    this.validator,
   });
 
   final String title;
@@ -26,12 +28,22 @@ class ElementEditorPage extends StatefulWidget {
   final VoidCallback? onDelete;
   final List<Widget> extras;
 
+  /// Не даёт сохранить запись без атрибута Name.
+  final bool requireName;
+
+  /// Доп. проверка перед сохранением: вернуть текст ошибки или null.
+  final String? Function(Map<String, String> values)? validator;
+
   @override
   State<ElementEditorPage> createState() => _ElementEditorPageState();
 }
 
 class _ElementEditorPageState extends State<ElementEditorPage> {
   final _c = <String, TextEditingController>{};
+  // Удалённые из формы контроллеры освобождаем только в dispose(): поле ещё
+  // может быть на экране до следующей перерисовки.
+  final _trash = <TextEditingController>[];
+  static final _attrNameRe = RegExp(r'^[A-Za-z_][A-Za-z0-9_.\-]*$');
   final _newKey = TextEditingController();
   final _newVal = TextEditingController();
 
@@ -48,7 +60,7 @@ class _ElementEditorPageState extends State<ElementEditorPage> {
 
   @override
   void dispose() {
-    for (final c in _c.values) {
+    for (final c in [..._c.values, ..._trash]) {
       c.dispose();
     }
     _newKey.dispose();
@@ -61,14 +73,26 @@ class _ElementEditorPageState extends State<ElementEditorPage> {
   void _addAttr() {
     final k = _newKey.text.trim();
     if (k.isEmpty) return;
+    if (!_attrNameRe.hasMatch(k)) {
+      snack(context, 'Недопустимое имя атрибута: «$k». Только латиница, цифры, _ . -');
+      return;
+    }
+    final v = _newVal.text.trim();
     setState(() {
-      _c[k] = TextEditingController(text: _newVal.text.trim());
+      final existing = _c[k];
+      if (existing != null) {
+        existing.text = v; // атрибут уже есть: просто обновляем значение
+      } else {
+        _c[k] = TextEditingController(text: v);
+      }
       _newKey.clear();
       _newVal.clear();
     });
   }
 
-  void _save() {
+  /// Собирает значения формы и передаёт в [ElementEditorPage.onSave].
+  /// Возвращает false, если данные некорректны (причина показана в snackbar).
+  bool _commit() {
     final out = <String, String>{};
     for (final f in widget.fields) {
       final v = _c[f.key]!.text.trim();
@@ -76,7 +100,7 @@ class _ElementEditorPageState extends State<ElementEditorPage> {
       if (v.isEmpty && !f.key.startsWith('@')) continue;
       if (f.numeric && v.isNotEmpty && num.tryParse(v) == null) {
         snack(context, '«${f.label}»: нужно число');
-        return;
+        return false;
       }
       out[f.key] = v;
     }
@@ -85,8 +109,21 @@ class _ElementEditorPageState extends State<ElementEditorPage> {
       final v = e.value.text.trim();
       if (v.isNotEmpty) out[e.key] = v;
     }
+    if (widget.requireName && (out['Name'] ?? '').isEmpty) {
+      snack(context, 'Name не может быть пустым');
+      return false;
+    }
+    final err = widget.validator?.call(out);
+    if (err != null) {
+      snack(context, err);
+      return false;
+    }
     widget.onSave(out);
-    Navigator.of(context).pop();
+    return true;
+  }
+
+  void _save() {
+    if (_commit()) Navigator.of(context).pop();
   }
 
   @override
@@ -103,7 +140,9 @@ class _ElementEditorPageState extends State<ElementEditorPage> {
               tooltip: 'Открыть XML',
               icon: const Icon(Icons.code),
               onPressed: () {
-                Navigator.of(context).pop(); // чтобы не править устаревший элемент
+                // Сначала применяем правки формы, чтобы они не потерялись.
+                if (!_commit()) return;
+                Navigator.of(context).pop();
                 widget.onRaw!();
               },
             ),
@@ -165,7 +204,10 @@ class _ElementEditorPageState extends State<ElementEditorPage> {
                       IconButton(
                         tooltip: 'Удалить атрибут',
                         icon: const Icon(Icons.delete_outline),
-                        onPressed: () => setState(() => _c.remove(k)),
+                        onPressed: () => setState(() {
+                          final removed = _c.remove(k);
+                          if (removed != null) _trash.add(removed);
+                        }),
                       ),
                     ],
                   ),

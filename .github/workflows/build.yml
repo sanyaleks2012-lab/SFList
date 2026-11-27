@@ -56,7 +56,8 @@ jobs:
         run: flutter pub get
 
       - name: Analyze project
-        run: flutter analyze
+        # Предупреждения и ошибки валят сборку, info-подсказки линтера — нет.
+        run: flutter analyze --no-fatal-infos
 
       - name: Build APK
         run: flutter build apk --release

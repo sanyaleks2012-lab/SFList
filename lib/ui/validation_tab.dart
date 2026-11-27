@@ -7,7 +7,7 @@ class ValidationTab extends StatelessWidget {
   const ValidationTab({super.key, required this.docs, required this.onChanged});
 
   final List<GameDoc> docs;
-  final VoidCallback onChanged;
+  final void Function(GameDoc doc) onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +48,12 @@ class ValidationTab extends StatelessWidget {
                 subtitle: Text(issue.doc?.kind.fileName ?? ''),
                 onTap: issue.element == null || issue.doc == null
                     ? null
-                    : () => openRawElement(context, issue.doc!, issue.element!, onChanged),
+                    : () => openRawElement(
+                          context,
+                          issue.doc!,
+                          issue.element!,
+                          () => onChanged(issue.doc!),
+                        ),
               );
             },
           ),

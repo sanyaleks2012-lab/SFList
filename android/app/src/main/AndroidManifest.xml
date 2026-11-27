@@ -1,8 +1,39 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Доступ к файлам по пути (режим «Файлы»).
+         Android 11+ требует MANAGE_EXTERNAL_STORAGE («Доступ ко всем файлам»),
+         Android 10 и ниже — обычные разрешения на storage. -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+
+    <!-- Shizuku (режим «Shizuku»: чтение и запись в Android/data/<pkg>/...) -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
     <application
-        android:label="sflist"
+        android:label="SFList"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:requestLegacyExternalStorage="true">
+
+        <!-- Через этот провайдер Shizuku передаёт приложению binder.
+             Без него Shizuku.pingBinder() всегда возвращает false. -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL"
+            tools:ignore="ExportedContentProvider" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -41,5 +72,7 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Видимость приложения Shizuku (Android 11+) -->
+        <package android:name="moe.shizuku.privileged.api" />
     </queries>
 </manifest>

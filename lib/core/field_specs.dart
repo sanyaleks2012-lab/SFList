@@ -22,13 +22,26 @@ const itemTypes = [
 const packLabels = [
   'ACT_1', 'ACT_2', 'ACT_3', 'ACT_4', 'ACT_5', 'ACT_6',
   'ACT_7_1', 'ACT_7_2', 'ACT_7_3', 'INTERMISSION', 'GATES_OF_SHADOWS',
+  'ACT_2_ASCENSION',
 ];
 
-/// Поле '@Template' — не атрибут, а дочерний <Upgrades Template="..."/>.
-List<FieldSpec> itemFields(List<String> templates) => [
+List<String> _merge(List<String> base, List<String> extra) =>
+    [...base, ...extra.where((e) => !base.contains(e))];
+
+/// Поля предмета. Ключ '@Template' — не атрибут, а дочерний <Upgrades Template="..."/>.
+/// [types], [subTypes], [packs] — значения, реально встречающиеся в открытом файле;
+/// они дополняют встроенные подсказки.
+List<FieldSpec> itemFields(
+  List<String> templates, {
+  List<String> types = const [],
+  List<String> subTypes = const [],
+  List<String> packs = const [],
+}) =>
+    [
       const FieldSpec('Name', 'Имя (Name)', hint: 'Уникальный ID, например WEAPON_MY_SWORD'),
-      const FieldSpec('Type', 'Тип', suggestions: itemTypes),
-      const FieldSpec('SubType', 'Подтип', hint: 'Например Katana, Axes, Knives'),
+      FieldSpec('Type', 'Тип', suggestions: _merge(itemTypes, types)),
+      FieldSpec('SubType', 'Подтип',
+          hint: 'Например Katana, Axes, Knives', suggestions: subTypes),
       const FieldSpec('Level', 'Уровень (Level)', numeric: true),
       const FieldSpec('UpgradeLevel', 'Макс. уровень (UpgradeLevel)', numeric: true),
       const FieldSpec('WeaponDamage', 'Урон оружия', numeric: true),
@@ -39,7 +52,7 @@ List<FieldSpec> itemFields(List<String> templates) => [
       const FieldSpec('HeadDefense', 'Защита головы', numeric: true),
       const FieldSpec('Price', 'Цена (монеты)', numeric: true),
       const FieldSpec('BonusPrice', 'Цена (бонусы)', numeric: true),
-      const FieldSpec('PackLabel', 'Пак (PackLabel)', suggestions: packLabels),
+      FieldSpec('PackLabel', 'Пак (PackLabel)', suggestions: _merge(packLabels, packs)),
       const FieldSpec('Model', 'Модель (Model)'),
       const FieldSpec('Image', 'Иконка (Image)'),
       const FieldSpec('ShopHide', 'Скрыть в магазине',
@@ -66,7 +79,7 @@ const perkSetFields = [
   FieldSpec('Frames', 'Длительность (кадры)',
       hint: '60 кадров = 1 секунда', numeric: true),
   FieldSpec('Animation', 'Тип удара',
-      suggestions: ['Weapon', 'Unarmed', 'RangedMissilePerk', 'MagicMissile'],
+      suggestions: ['Weapon', 'Unarmed', 'Kick', 'RangedMissilePerk', 'MagicMissile'],
       hint: 'Какие удары запускают эффект'),
   FieldSpec('Defense', 'Защита', suggestions: ['BodyDefense', 'HeadDefense']),
   FieldSpec('DamageFactor', 'Множитель урона (DamageFactor)',

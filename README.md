@@ -1,16 +1,31 @@
-# sflist
+# SFList
 
-A new Flutter project.
+Редактор `list.xml` и `perks.xml` для модов Shadow Fight 2 (Flutter, Android).
 
-## Getting Started
+## Что умеет
 
-This project is a starting point for a Flutter application.
+- **Предметы** (`list.xml`): поиск, фильтр по типу, добавление, дублирование, скрытие в магазине,
+  удаление, шаблон апгрейдов, любые атрибуты.
+- **Перки** (`perks.xml`): атрибуты перка и параметры эффекта `<Set>`; триггеры правятся через XML элемента.
+- **Проверка**: дубликаты `Name`, нечисловые значения, несуществующие шаблоны, лишний текст внутри тега.
+- **XML**: правка отдельного элемента или всего файла.
+- Undo/redo, при первом сохранении рядом создаётся `*.bak` с оригиналом.
+  Форматирование файла не меняется, правятся только изменённые элементы.
 
-A few resources to get you started if this is your first Flutter project:
+## Как открыть файлы
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+- **Файлы**: путь к папке с `list.xml`/`perks.xml` (например `/storage/emulated/0/...`).
+  Нужен доступ «Ко всем файлам». Папки `Android/data` с Android 11 так недоступны.
+- **Shizuku**: пакет игры, файлы берутся из
+  `/storage/emulated/0/Android/data/<пакет>/files/mod/gamedata`.
+  Shizuku должен быть запущен, приложению нужно выдать доступ.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Сборка
+
+```bash
+flutter pub get
+flutter build apk --release
+```
+
+Для release важен `android/app/proguard-rules.pro`: без него R8 вырезает метод,
+который вызывается через reflection для Shizuku.

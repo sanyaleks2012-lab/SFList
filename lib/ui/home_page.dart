@@ -1,12 +1,13 @@
-import 'package:file_picker/file_picker.dart';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:xml/xml.dart';
 
 import '../core/game_doc.dart';
 import '../core/shizuku_bridge.dart';
 import '../core/storage.dart';
 import 'common.dart';
 import 'editor_page.dart';
+import 'folder_picker.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -15,10 +16,11 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+  static const _defaultDir = '/storage/emulated/0';
+
   bool _shizuku = false;
-  String? _listPath;
-  String? _perksPath;
+  final _dir = TextEditingController(text: _defaultDir);
   final _pkg = TextEditingController(text: 'com.onerdna.sfml');
   ShizukuStatus? _status;
   Set<String> _found = {};
@@ -27,60 +29,123 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    Prefs.lastPackage().then((p) {
-      if (p != null && mounted) _pkg.text = p;
-    });
+    WidgetsBinding.instance.addObserver(this);
+    _restorePrefs();
     _refreshStatus();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _dir.dispose();
     _pkg.dispose();
     super.dispose();
   }
 
+  /// Вернулись из Shizuku / настроек: обновляем статус, чтобы не жать «обновить» вручную.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _shizuku) _refreshStatus();
+  }
+
+  Future<void> _restorePrefs() async {
+    final pkg = await Prefs.lastPackage();
+    final dir = await Prefs.lastDir();
+    final shizuku = await Prefs.lastModeShizuku();
+    if (!mounted) return;
+    setState(() {
+      if (pkg != null && pkg.isNotEmpty) _pkg.text = pkg;
+      if (dir != null && dir.isNotEmpty) _dir.text = dir;
+      _shizuku = shizuku;
+    });
+  }
+
   Future<void> _refreshStatus() async {
+    ShizukuStatus st;
     try {
-      _status = await ShizukuBridge.status();
+      st = await ShizukuBridge.status();
     } catch (_) {
-      _status = const ShizukuStatus(false, false);
+      st = const ShizukuStatus(false, false);
     }
-    if (mounted) setState(() {});
+    if (mounted) setState(() => _status = st);
   }
 
   Future<void> _requestShizuku() async {
     try {
-      await ShizukuBridge.request();
+      final ok = await ShizukuBridge.request();
+      if (!ok && mounted) {
+        snack(context,
+            'Доступ не выдан. Откройте Shizuku → «Авторизованные приложения» и включите SFList');
+      }
     } catch (e) {
       if (mounted) await showErrorDialog(context, '$e');
     }
     await _refreshStatus();
   }
 
+  /// Папка из поля «Файлы»: можно вставить и путь к самому файлу .xml.
+  String _normalizedDir() {
+    var p = _dir.text.trim();
+    if (p.toLowerCase().endsWith('.xml')) {
+      final i = p.lastIndexOf('/');
+      if (i > 0) p = p.substring(0, i);
+    }
+    while (p.length > 1 && p.endsWith('/')) {
+      p = p.substring(0, p.length - 1);
+    }
+    return p;
+  }
+
   Future<void> _scan() async {
     try {
-      final files = await ShizukuBridge.list(ShizukuBridge.gameDataDir(_pkg.text.trim()));
-      setState(() => _found = files.toSet());
+      final names = DocKind.values.map((k) => k.fileName);
+      Set<String> found;
+      if (_shizuku) {
+        final pkg = _pkg.text.trim();
+        if (!ShizukuBridge.isValidPackage(pkg)) {
+          throw 'Некорректное имя пакета: «$pkg»';
+        }
+        final files = await ShizukuBridge.list(ShizukuBridge.gameDataDir(pkg));
+        found = files.where(names.contains).toSet();
+      } else {
+        if (!await Storage.ensureAllFiles()) {
+          throw 'Нет доступа ко всем файлам';
+        }
+        found = await Storage.existing(_normalizedDir(), names);
+      }
+      if (mounted) setState(() => _found = found);
     } catch (e) {
-      if (mounted) snack(context, 'Не удалось прочитать папку: $e');
+      if (mounted) {
+        setState(() => _found = {});
+        snack(context, 'Не удалось прочитать папку: $e');
+      }
     }
   }
 
-  Future<void> _pick(DocKind kind) async {
-    final r = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['xml'],
-      dialogTitle: kind.fileName,
+  Future<void> _browse() async {
+    if (!await Storage.ensureAllFiles()) {
+      if (mounted) snack(context, 'Нужен доступ «Ко всем файлам»');
+      return;
+    }
+    if (!mounted) return;
+    final picked = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => FolderPickerPage(initial: _normalizedDir())),
     );
-    final path = r?.files.single.path;
-    if (path == null) return;
-    setState(() {
-      if (kind == DocKind.list) {
-        _listPath = path;
-      } else {
-        _perksPath = path;
-      }
-    });
+    if (picked == null || !mounted) return;
+    _dir.text = picked;
+    await _scan();
+  }
+
+  Future<GameDoc> _loadDoc(DocKind kind, String path, {required bool viaShizuku}) async {
+    final text = await Storage.read(path, viaShizuku: viaShizuku);
+    try {
+      return GameDoc.parse(kind, path, text, viaShizuku: viaShizuku);
+    } on DocFormatException {
+      rethrow;
+    } catch (e) {
+      throw '${kind.fileName}: ошибка XML.\n$e\n\n'
+          'Исправьте файл в текстовом редакторе и откройте снова.';
+    }
   }
 
   Future<void> _open() async {
@@ -90,46 +155,46 @@ class _HomePageState extends State<HomePage> {
 
       if (_shizuku) {
         final pkg = _pkg.text.trim();
-        if (pkg.isEmpty) throw 'Укажите пакет игры';
+        if (!ShizukuBridge.isValidPackage(pkg)) {
+          throw 'Укажите имя пакета игры, например com.onerdna.sfml';
+        }
         final st = await ShizukuBridge.status();
         if (!st.running) throw 'Shizuku не запущен. Запустите его и повторите';
         if (!st.granted) {
-          await ShizukuBridge.request();
-          throw 'Выдайте доступ Shizuku SFList и нажмите «Открыть» снова';
+          final ok = await ShizukuBridge.request();
+          if (!ok) {
+            throw 'Доступ Shizuku не выдан. Откройте Shizuku → «Авторизованные '
+                'приложения» и включите SFList';
+          }
         }
-        await Prefs.setLastPackage(pkg);
         final dir = ShizukuBridge.gameDataDir(pkg);
         final files = await ShizukuBridge.list(dir);
         for (final kind in DocKind.values) {
           if (!files.contains(kind.fileName)) continue;
-          final path = '$dir/${kind.fileName}';
-          final text = await Storage.read(path, viaShizuku: true);
-          docs.add(GameDoc.parse(kind, path, text, viaShizuku: true));
+          docs.add(await _loadDoc(kind, '$dir/${kind.fileName}', viaShizuku: true));
         }
+        await Prefs.setLastPackage(pkg);
       } else {
         if (!await Storage.ensureAllFiles()) {
           throw 'Нужен доступ «Все файлы» (Настройки → Приложения → SFList)';
         }
-        final picked = {DocKind.list: _listPath, DocKind.perks: _perksPath};
-        for (final entry in picked.entries) {
-          final path = entry.value;
-          if (path == null) continue;
-          final text = await Storage.read(path, viaShizuku: false);
-          docs.add(GameDoc.parse(entry.key, path, text));
+        final dir = _normalizedDir();
+        if (dir.isEmpty || !await Directory(dir).exists()) {
+          throw 'Папка не найдена: $dir';
         }
+        for (final kind in DocKind.values) {
+          final path = '$dir/${kind.fileName}';
+          if (!await File(path).exists()) continue;
+          docs.add(await _loadDoc(kind, path, viaShizuku: false));
+        }
+        await Prefs.setLastDir(dir);
       }
+      await Prefs.setLastModeShizuku(_shizuku);
 
-      if (docs.isEmpty) throw 'Не найдено ни list.xml, ни perks.xml';
+      if (docs.isEmpty) throw 'В папке нет ни list.xml, ни perks.xml';
       if (!mounted) return;
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => EditorPage(docs: docs)));
-    } on XmlParserException catch (e) {
-      if (mounted) {
-        await showErrorDialog(
-          context,
-          'Ошибка XML: строка ${e.line}, колонка ${e.column}\n${e.message}\n\n'
-          'Откройте файл в редакторе XML или исправьте строку вручную.',
-        );
-      }
+      await Navigator.of(context)
+          .push(MaterialPageRoute(builder: (_) => EditorPage(docs: docs)));
     } catch (e) {
       if (mounted) await showErrorDialog(context, '$e');
     } finally {
@@ -151,7 +216,10 @@ class _HomePageState extends State<HomePage> {
             ],
             selected: {_shizuku},
             onSelectionChanged: (s) {
-              setState(() => _shizuku = s.first);
+              setState(() {
+                _shizuku = s.first;
+                _found = {};
+              });
               if (_shizuku) _refreshStatus();
             },
           ),
@@ -168,27 +236,58 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _foundChips() => Wrap(
+        spacing: 8,
+        children: [
+          for (final k in DocKind.values)
+            Chip(
+              avatar: Icon(_found.contains(k.fileName) ? Icons.check : Icons.close, size: 18),
+              label: Text(k.fileName),
+            ),
+        ],
+      );
+
   List<Widget> _fileSection() => [
-        _FileRow(
-          label: 'list.xml',
-          path: _listPath,
-          onPick: () => _pick(DocKind.list),
+        TextField(
+          controller: _dir,
+          decoration: InputDecoration(
+            labelText: 'Папка с list.xml и perks.xml',
+            hintText: _defaultDir,
+            border: const OutlineInputBorder(),
+            suffixIcon: IconButton(
+              tooltip: 'Выбрать папку',
+              icon: const Icon(Icons.folder_open),
+              onPressed: _browse,
+            ),
+          ),
+          onSubmitted: (_) => _scan(),
         ),
         const SizedBox(height: 10),
-        _FileRow(
-          label: 'perks.xml',
-          path: _perksPath,
-          onPick: () => _pick(DocKind.perks),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () async {
+                await Storage.ensureAllFiles();
+                await _scan();
+              },
+              icon: const Icon(Icons.lock_open),
+              label: const Text('Доступ ко всем файлам'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _scan,
+              icon: const Icon(Icons.search),
+              label: const Text('Найти файлы'),
+            ),
+          ],
         ),
+        const SizedBox(height: 10),
+        _foundChips(),
         const SizedBox(height: 10),
         const Text(
-          'Можно выбрать один или оба файла. Для папки Android/data используйте Shizuku.',
-        ),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: Storage.ensureAllFiles,
-          icon: const Icon(Icons.lock_open),
-          label: const Text('Доступ ко всем файлам'),
+          'Откроются те из list.xml и perks.xml, что лежат в папке. '
+          'Папки Android/data с Android 11 недоступны напрямую, для них используйте Shizuku.',
         ),
       ];
 
@@ -229,6 +328,8 @@ class _HomePageState extends State<HomePage> {
           hintText: 'com.onerdna.sfml',
           border: OutlineInputBorder(),
         ),
+        // Обновляем строку с путём под полем при каждом символе.
+        onChanged: (_) => setState(() => _found = {}),
         onSubmitted: (_) => _scan(),
       ),
       const SizedBox(height: 8),
@@ -246,44 +347,7 @@ class _HomePageState extends State<HomePage> {
         label: const Text('Найти файлы'),
       ),
       const SizedBox(height: 10),
-      Wrap(
-        spacing: 8,
-        children: [
-          for (final k in DocKind.values)
-            Chip(
-              avatar: Icon(_found.contains(k.fileName) ? Icons.check : Icons.close, size: 18),
-              label: Text(k.fileName),
-            ),
-        ],
-      ),
+      _foundChips(),
     ];
-  }
-}
-
-class _FileRow extends StatelessWidget {
-  const _FileRow({required this.label, required this.path, required this.onPick});
-
-  final String label;
-  final String? path;
-  final VoidCallback onPick;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.insert_drive_file_outlined),
-        title: Text(label),
-        subtitle: Text(
-          path ?? 'Не выбран',
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: IconButton(
-          tooltip: 'Выбрать файл',
-          icon: const Icon(Icons.folder_open),
-          onPressed: onPick,
-        ),
-      ),
-    );
   }
 }

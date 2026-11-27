@@ -31,6 +31,10 @@ class _PerksTabState extends State<PerksTab> {
         title: p.getAttribute('Name') ?? 'Перк',
         attributes: attrs,
         fields: perkFields,
+        requireName: true,
+        validator: (v) => widget.doc.nameTaken(v['Name'] ?? '', except: p)
+            ? 'Перк с именем «${v['Name']}» уже есть'
+            : null,
         extras: [
           Card(
             child: ListTile(
@@ -57,18 +61,22 @@ class _PerksTabState extends State<PerksTab> {
   }
 
   void _editSet(XmlElement p) {
-    final s = widget.doc.ensureChild(p, 'Set');
-    final attrs = {for (final a in s.attributes) a.name.local: a.value};
+    // <Set> не создаём, пока пользователь не сохранит хотя бы один параметр.
+    final s = widget.doc.child(p, 'Set');
+    final attrs = {
+      if (s != null)
+        for (final a in s.attributes) a.name.local: a.value,
+    };
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => ElementEditorPage(
         title: 'Set • ${p.getAttribute('Name') ?? ''}',
         attributes: attrs,
         fields: perkSetFields,
         onSave: (v) {
-          widget.doc.applyAttributes(s, v);
+          widget.doc.applyChild(p, 'Set', v, first: true);
           _changed();
         },
-        onRaw: () => openRawElement(context, widget.doc, s, _changed),
+        onRaw: s == null ? null : () => openRawElement(context, widget.doc, s, _changed),
       ),
     ));
   }
@@ -76,6 +84,10 @@ class _PerksTabState extends State<PerksTab> {
   Future<void> _add() async {
     final name = await promptText(context, 'Новый перк', 'Name', hint: 'PERK_MY_EFFECT');
     if (name == null || name.trim().isEmpty) return;
+    if (widget.doc.nameTaken(name.trim())) {
+      if (mounted) snack(context, 'Перк «${name.trim()}» уже существует');
+      return;
+    }
     final el = widget.doc.addRecord(name.trim());
     _changed();
     _edit(el);

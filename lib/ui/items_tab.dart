@@ -32,7 +32,16 @@ class _ItemsTabState extends State<ItemsTab> {
       builder: (_) => ElementEditorPage(
         title: e.getAttribute('Name') ?? 'Предмет',
         attributes: attrs,
-        fields: itemFields(widget.doc.templateNames),
+        requireName: true,
+        validator: (v) => widget.doc.nameTaken(v['Name'] ?? '', except: e)
+            ? 'Предмет с именем «${v['Name']}» уже есть'
+            : null,
+        fields: itemFields(
+          widget.doc.templateNames,
+          types: widget.doc.frequentValues('Type', limit: 40),
+          subTypes: widget.doc.frequentValues('SubType', limit: 14),
+          packs: widget.doc.frequentValues('PackLabel', limit: 40),
+        ),
         onSave: (v) {
           widget.doc.applyAttributes(e, v);
           _changed();
@@ -50,6 +59,10 @@ class _ItemsTabState extends State<ItemsTab> {
     final name = await promptText(context, 'Новый предмет', 'Name',
         hint: 'WEAPON_MY_SWORD');
     if (name == null || name.trim().isEmpty) return;
+    if (widget.doc.nameTaken(name.trim())) {
+      if (mounted) snack(context, 'Предмет «${name.trim()}» уже существует');
+      return;
+    }
     final el = widget.doc.addRecord(name.trim(), type: 'Weapon');
     _changed();
     _edit(el);
@@ -77,12 +90,16 @@ class _ItemsTabState extends State<ItemsTab> {
   @override
   Widget build(BuildContext context) {
     final all = widget.doc.records;
-    final types = {for (final e in all) e.getAttribute('Type') ?? ''}..remove('');
+    final types = ({for (final e in all) e.getAttribute('Type') ?? ''}..remove('')).toList()
+      ..sort();
+    // Если последний предмет выбранного типа переименовали/сменили тип,
+    // DropdownButton упал бы на assert «нет пункта со значением».
+    final typeFilter = types.contains(_type) ? _type : '';
     final q = _query.toLowerCase();
     final shown = all.where((e) {
       final name = (e.getAttribute('Name') ?? '').toLowerCase();
       final type = e.getAttribute('Type') ?? '';
-      return (q.isEmpty || name.contains(q)) && (_type.isEmpty || type == _type);
+      return (q.isEmpty || name.contains(q)) && (typeFilter.isEmpty || type == typeFilter);
     }).toList();
 
     return Column(
@@ -103,7 +120,7 @@ class _ItemsTabState extends State<ItemsTab> {
               ),
               const SizedBox(width: 8),
               DropdownButton<String>(
-                value: _type,
+                value: typeFilter,
                 underline: const SizedBox(),
                 items: [
                   const DropdownMenuItem(value: '', child: Text('Все типы')),

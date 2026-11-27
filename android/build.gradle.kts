@@ -13,10 +13,15 @@ subprojects {
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
 
+// Некоторые плагины собраны с compileSdk 34/35, а их зависимости (androidx,
+// flutter_plugin_android_lifecycle) требуют 36+. Поднимаем compileSdk у плагинов;
+// сам :app пропускаем, у него свой compileSdk в app/build.gradle.kts.
+// Проверка `is` вместо `as`: если у модуля другой тип расширения, сборка не падает.
 subprojects {
     afterEvaluate {
-        extensions.findByName("android")?.let { ext ->
-            (ext as com.android.build.gradle.BaseExtension).compileSdkVersion(36)
+        val androidExt = extensions.findByName("android")
+        if (project.name != "app" && androidExt is com.android.build.gradle.BaseExtension) {
+            androidExt.compileSdkVersion(36)
         }
     }
 }

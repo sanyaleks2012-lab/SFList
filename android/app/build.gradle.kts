@@ -1,4 +1,3 @@
-
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -9,7 +8,7 @@ plugins {
 
 android {
     namespace = "com.SFRaidTeam.sflist"
-    compileSdk = 37
+    compileSdk = 36 // 36 — минимум, который требуют зависимости плагинов (androidx / lifecycle)
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -27,7 +26,16 @@ android {
 
     buildTypes {
         release {
+            // Для теста подписываем debug-ключом. Для публикации нужен свой signingConfig.
             signingConfig = signingConfigs.getByName("debug")
+
+            // Keep-правила для Shizuku: ShizukuChannel вызывает приватный
+            // Shizuku.newProcess через reflection, а R8 в release вырезает такие методы.
+            // Без этой строки Shizuku работает в debug, но ломается в release-APK.
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }
